@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DEVICE_DATABASE,
   GAME_MODES,
   PLAYSTYLES,
+  TEST_STEPS,
   WEAPON_PRESETS,
   defaultProfile,
   searchDevices,
@@ -13,20 +14,8 @@ import {
   exportProfileAsText,
   exportProfileAsPng,
   createProfileSummary,
+  compareProfiles,
 } from './lib/engine';
-
-const testLabTemplate = [
-  'Training test',
-  'Close-range test',
-  'Mid-range test',
-  'Long-range test',
-  'Tracking test',
-  'Drag-shot test',
-  'One-tap test',
-  'Weapon-switch test',
-  'Movement test',
-  'Stability test',
-];
 
 const initialProfile = {
   ...defaultProfile,
@@ -36,35 +25,35 @@ const initialProfile = {
 
 function App() {
   const [profile, setProfile] = useState(initialProfile);
-  const [searchQuery, setSearchQuery] = useState('realme c30');
+  const [searchTerm, setSearchTerm] = useState('realme c30');
   const [results, setResults] = useState(() => calculateCalibration(initialProfile));
   const [history, setHistory] = useState(() => {
-    return JSON.parse(localStorage.getItem('knight-sensi-history') || '[]');
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(window.localStorage.getItem('knight-sensi-history') || '[]');
+    } catch {
+      return [];
+    }
   });
   const [feedback, setFeedback] = useState({});
+  const [comparison, setComparison] = useState(null);
 
-  const matches = useMemo(() => searchDevices(searchQuery), [searchQuery]);
+  const matches = useMemo(() => searchDevices(searchTerm), [searchTerm]);
 
-  const setDevice = (device) => {
+  useEffect(() => {
+    setResults(calculateCalibration(profile));
+  }, [profile]);
+
+  const applyDevice = (device) => {
     setProfile((current) => ({ ...current, device }));
-    setSearchQuery(device.displayName || device.model);
+    setSearchTerm(device.displayName || device.model || '');
   };
 
   const updateField = (field, value) => {
     setProfile((current) => ({ ...current, [field]: value }));
   };
 
-  const updateWeaponField = (field, value) => {
-    setProfile((current) => ({
-      ...current,
-      weaponProfile: {
-        ...current.weaponProfile,
-        [field]: Number(value),
-      },
-    }));
-  };
-
-  const updatePlaystyle = (field, value) => {
+  const updatePlayer = (field, value) => {
     setProfile((current) => ({
       ...current,
       playerProfile: {
@@ -74,39 +63,44 @@ function App() {
     }));
   };
 
-  const handleCalculate = () => {
+  const updateWeapon = (field, value) => {
+    setProfile((current) => ({
+      ...current,
+      weaponProfile: {
+        ...current.weaponProfile,
+        [field]: Number(value),
+      },
+    }));
+  };
+
+  const runCalibration = () => {
     const next = calculateCalibration(profile);
     setResults(next);
     const validation = validateProfile(profile);
     if (validation.valid) {
-      const saved = JSON.parse(localStorage.getItem('knight-sensi-history') || '[]');
+      const saved = JSON.parse(window.localStorage.getItem('knight-sensi-history') || '[]');
       const entry = {
         ...createProfileSummary(profile, next),
         timestamp: new Date().toISOString(),
       };
-      const custom = [entry, ...saved].slice(0, 8);
-      localStorage.setItem('knight-sensi-history', JSON.stringify(custom));
-      setHistory(custom);
+      const merged = [entry, ...saved].slice(0, 8);
+      window.localStorage.setItem('knight-sensi-history', JSON.stringify(merged));
+      setHistory(merged);
     }
   };
 
-  const addFeedback = (step, value) => {
-    setFeedback((current) => ({
-      ...current,
-      [step]: value,
-    }));
+  const runComparison = () => {
+    const reference = {
+      ...initialProfile,
+      device: DEVICE_DATABASE[0],
+      weaponProfile: { ...WEAPON_PRESETS[1].weights },
+      playerProfile: { ...initialProfile.playerProfile },
+    };
+    setComparison(compareProfiles(profile, reference));
   };
 
-  const exportJson = () => {
-    exportProfileAsJson(profile, results);
-  };
-
-  const exportText = () => {
-    exportProfileAsText(profile, results);
-  };
-
-  const exportPng = () => {
-    exportProfileAsPng(profile, results);
+  const updateFeedback = (step, value) => {
+    setFeedback((current) => ({ ...current, [step]: value }));
   };
 
   const analysis = generateAnalysis(profile, results);
@@ -118,35 +112,37 @@ function App() {
           <p className="eyebrow">CALIBRATION LABORATORY</p>
           <h1>KNIGHT SENSI</h1>
         </div>
-        <div className="status-pill">{results.overallConfidence}% confidence</div>
+        <div className="status-pill">{results.overallConfidence}% overall confidence</div>
       </header>
 
       <main className="layout">
-        <section className="panel form-panel">
+        <section className="panel form-panel" aria-label="Calibration inputs">
           <div className="section-header">
             <h2>Device model</h2>
           </div>
 
           <label className="field">
-            <span>Search device</span>
+            <span>Device search</span>
             <input
               aria-label="Search device database"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
             />
           </label>
 
           <div className="device-list" aria-live="polite">
-            {matches.slice(0, 5).map((device) => (
+            {matches.slice(0, 6).map((device) => (
               <button
                 key={device.id}
                 type="button"
                 className={`device-card ${profile.device.id === device.id ? 'selected' : ''}`}
-                onClick={() => setDevice(device)}
+                onClick={() => applyDevice(device)}
               >
                 <strong>{device.displayName}</strong>
                 <small>{device.manufacturer}</small>
-                <span>{device.refreshRate} Hz • {device.dpi} DPI</span>
+                <span>
+                  {device.refreshRate} Hz • {device.dpi} DPI • {device.provenance}
+                </span>
               </button>
             ))}
           </div>
@@ -162,6 +158,11 @@ function App() {
             </label>
 
             <label className="field">
+              <span>Refresh rate</span>
+              <input type="number" value={profile.refreshRate} onChange={(event) => updateField('refreshRate', Number(event.target.value))} />
+            </label>
+
+            <label className="field">
               <span>Current DPI</span>
               <input type="number" value={profile.currentDpi} onChange={(event) => updateField('currentDpi', Number(event.target.value))} />
             </label>
@@ -172,17 +173,12 @@ function App() {
             </label>
 
             <label className="field">
-              <span>Refresh rate</span>
-              <input type="number" value={profile.refreshRate} onChange={(event) => updateField('refreshRate', Number(event.target.value))} />
-            </label>
-
-            <label className="field">
               <span>Screen size</span>
               <input type="number" step="0.1" value={profile.screenSize} onChange={(event) => updateField('screenSize', Number(event.target.value))} />
             </label>
 
             <label className="field">
-              <span>Fire button size</span>
+              <span>Fire button</span>
               <select value={profile.fireButtonSize} onChange={(event) => updateField('fireButtonSize', event.target.value)}>
                 <option value="SMALL">Small</option>
                 <option value="MEDIUM">Medium</option>
@@ -193,19 +189,19 @@ function App() {
           </div>
 
           <div className="section-header">
-            <h2>Player profile</h2>
+            <h2>Player model</h2>
           </div>
 
-          <div className="grid two">
+          <div className="slider-grid">
             {Object.entries(PLAYSTYLES).map(([key, label]) => (
-              <label className="field" key={key}>
+              <label className="field slider-field" key={key}>
                 <span>{label}</span>
                 <input
                   type="range"
                   min="0"
                   max="100"
                   value={profile.playerProfile[key]}
-                  onChange={(event) => updatePlaystyle(key, event.target.value)}
+                  onChange={(event) => updatePlayer(key, event.target.value)}
                 />
                 <small>{profile.playerProfile[key]}%</small>
               </label>
@@ -213,39 +209,40 @@ function App() {
           </div>
 
           <div className="section-header">
-            <h2>Weapon profile</h2>
+            <h2>Weapon model</h2>
           </div>
 
-          <div className="grid two">
+          <div className="slider-grid">
             {Object.entries(profile.weaponProfile).map(([key, value]) => (
-              <label className="field" key={key}>
+              <label className="field slider-field" key={key}>
                 <span>{key}</span>
                 <input
                   type="range"
                   min="0"
                   max="100"
                   value={value}
-                  onChange={(event) => updateWeaponField(key, event.target.value)}
+                  onChange={(event) => updateWeapon(key, event.target.value)}
                 />
                 <small>{value}%</small>
               </label>
             ))}
           </div>
 
-          <button className="primary" type="button" onClick={handleCalculate}>
-            Run calibration
-          </button>
+          <div className="action-row">
+            <button type="button" className="primary" onClick={runCalibration}>Run calibration</button>
+            <button type="button" className="secondary" onClick={runComparison}>Compare baseline</button>
+          </div>
         </section>
 
-        <section className="panel output-panel">
+        <section className="panel output-panel" aria-label="Calibration output">
           <div className="section-header">
-            <h2>Calibration result</h2>
+            <h2>Results</h2>
           </div>
 
           <div className="sensitivity-card">
-            {Object.entries(results.sensitivity).map(([key, value]) => (
-              <div key={key} className="sensitivity-row">
-                <span>{key}</span>
+            {Object.entries(results.sensitivity).map(([label, value]) => (
+              <div key={label} className="sensitivity-row">
+                <span>{label}</span>
                 <strong>{Math.round(value)}</strong>
               </div>
             ))}
@@ -253,7 +250,7 @@ function App() {
 
           <div className="stats-grid">
             <div className="stat-box">
-              <label>Calibration confidence</label>
+              <label>Calibration quality</label>
               <strong>{results.overallConfidence}%</strong>
             </div>
             <div className="stat-box">
@@ -288,10 +285,20 @@ function App() {
             </ul>
           </div>
 
+          {comparison && (
+            <div className="analysis-box">
+              <h3>Profile comparison</h3>
+              <ul>
+                <li>Profile similarity: {comparison.valueSimilarity}%</li>
+                <li>Device similarity: {comparison.deviceSimilarity}%</li>
+              </ul>
+            </div>
+          )}
+
           <div className="toolbar">
-            <button type="button" onClick={exportJson}>Export JSON</button>
-            <button type="button" onClick={exportText}>TXT</button>
-            <button type="button" onClick={exportPng}>PNG card</button>
+            <button type="button" onClick={() => exportProfileAsJson(profile, results)}>JSON</button>
+            <button type="button" onClick={() => exportProfileAsText(profile, results)}>TXT</button>
+            <button type="button" onClick={() => exportProfileAsPng(profile, results)}>PNG</button>
           </div>
         </section>
       </main>
@@ -302,14 +309,15 @@ function App() {
         </div>
 
         <div className="lab-grid">
-          {testLabTemplate.map((step) => (
+          {TEST_STEPS.map((step) => (
             <div key={step} className="lab-item">
               <label>{step}</label>
-              <select value={feedback[step] || 'Neutral'} onChange={(event) => addFeedback(step, event.target.value)}>
+              <select value={feedback[step] || 'Neutral'} onChange={(event) => updateFeedback(step, event.target.value)}>
                 <option value="Neutral">Neutral</option>
                 <option value="Too slow">Too slow</option>
                 <option value="Too fast">Too fast</option>
                 <option value="Overshoot">Overshoot</option>
+                <option value="Undershoot">Undershoot</option>
                 <option value="Tracking difficulty">Tracking difficulty</option>
                 <option value="Stable">Stable</option>
               </select>
@@ -320,18 +328,23 @@ function App() {
 
       <section className="panel history-panel">
         <div className="section-header">
-          <h2>History</h2>
+          <h2>Profile history</h2>
         </div>
 
         {history.length === 0 ? (
-          <p>No saved profiles yet.</p>
+          <p className="empty-state">No saved profiles yet.</p>
         ) : (
           <div className="history-list">
             {history.map((entry, index) => (
               <div key={`${entry.timestamp}-${index}`} className="history-item">
-                <strong>{entry.mode}</strong>
-                <span>{new Date(entry.timestamp).toLocaleDateString()}</span>
-                <small>{entry.device}</small>
+                <div>
+                  <strong>{entry.mode}</strong>
+                  <small>{entry.device}</small>
+                </div>
+                <div>
+                  <span>{entry.general}</span>
+                  <small>{new Date(entry.timestamp).toLocaleDateString()}</small>
+                </div>
               </div>
             ))}
           </div>
@@ -342,3 +355,5 @@ function App() {
 }
 
 export default App;
+
+

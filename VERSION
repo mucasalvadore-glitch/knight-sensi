@@ -1,13 +1,57 @@
-# Changelog
+# KNIGHT SENSI
 
-## 0.1.0
+KNIGHT SENSI is a professional sensitivity calibration and analysis laboratory for mobile competitive aiming. The project is designed to remain explainable, deterministic, and grounded in actual device, DPI, refresh, player, and weapon constraints rather than fake automation or opaque formulas.
 
-- Initial release of the KNIGHT SENSI engineering dashboard
-- Added device database with Realme C30 validation profile
-- Added sensitivity calibration engine and explainable output model
-- Added playstyle and weapon weighting controls
-- Added confidence, robustness, and double-check analysis blocks
-- Added test lab and local history storage
-- Added JSON, TXT, and PNG export support
-- Added mobile-first accessibility-focused UI
-- Added Vitest coverage for core calibration logic
+## What this version adds
+
+- Device search with Realme C30 validation and alias support
+- More explicit calibration model with device, DPI, refresh, environment, and playstyle weighting
+- Weighted player profile and weapon profile controls
+- Relationship validation and double-check analysis
+- Local profile history and export support for JSON, TXT, and PNG card formats
+- Responsive dark-glass laboratory UI with mobile-friendly layout
+- Test-lab feedback and comparison workflow
+- Deterministic engine utilities with validation and import protections
+- Vitest-based regression coverage for search, calibration, and validation
+
+## Safety and ethics
+
+This application is intended for legitimate calibration analysis and does not modify game memory, inject scripts, automate aiming, or provide anti-cheat bypass workflows. The platform is a laboratory for measuring and refining legitimate in-game settings.
+
+## Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+## Production build
+
+```bash
+npm run build
+```
+
+## Testing
+
+```bash
+npm test
+```
+
+## Version
+
+Current version: 1.2.0
+
+## Changelog
+
+### 1.2.0
+
+- Reworked the calibration engine around explainable sensitivity relationships and confidence scoring
+- Expanded device search and real-world device profile support
+- Improved robustness, comparison, and test-lab output
+- Strengthened validation for imported profile data
+- Refined the premium laboratory UI and mobile responsiveness
+
+## Notes
+
+This is a strong engineering foundation. Deeper device coverage, stronger provenance tracking, and expanded calibration diagnostics can be layered in as the project evolves without discarding the core product flow.
+
