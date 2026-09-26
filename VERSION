@@ -1,0 +1,13 @@
+# Changelog
+
+## 0.1.0
+
+- Initial release of the KNIGHT SENSI engineering dashboard
+- Added device database with Realme C30 validation profile
+- Added sensitivity calibration engine and explainable output model
+- Added playstyle and weapon weighting controls
+- Added confidence, robustness, and double-check analysis blocks
+- Added test lab and local history storage
+- Added JSON, TXT, and PNG export support
+- Added mobile-first accessibility-focused UI
+- Added Vitest coverage for core calibration logic

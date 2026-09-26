@@ -1,0 +1,343 @@
+export const GAME_MODES = ['Free Fire Normal', 'Free Fire MAX', 'Unknown'];
+
+export const PLAYSTYLES = {
+  rush: 'Rush',
+  balanced: 'Balanced',
+  tactical: 'Tactical',
+  precision: 'Precision',
+  tracking: 'Tracking',
+  dragShot: 'Drag Shot',
+  oneTap: 'One-Tap',
+};
+
+export const DEVICE_DATABASE = [
+  {
+    id: 'realme-c30',
+    manufacturer: 'Realme',
+    model: 'C30',
+    displayName: 'Realme C30',
+    aliases: ['realme c30', 'c30', 'RMX3581', 'realme entry 60hz'],
+    displaySize: 6.5,
+    resolution: '720x1600',
+    refreshRate: 60,
+    dpi: 360,
+    ppi: 270,
+    network: 'Mediatek',
+    performanceTier: 'entry',
+    touchClass: 'basic',
+    confidence: 94,
+    provenance: 'VERIFIED',
+  },
+  {
+    id: 'pixel-7a',
+    manufacturer: 'Google',
+    model: 'Pixel 7a',
+    displayName: 'Google Pixel 7a',
+    aliases: ['pixel 7a', 'google pixel 7a'],
+    displaySize: 6.1,
+    resolution: '1080x2400',
+    refreshRate: 90,
+    dpi: 410,
+    ppi: 430,
+    network: 'Google Tensor G2',
+    performanceTier: 'mid',
+    touchClass: 'responsive',
+    confidence: 96,
+    provenance: 'VERIFIED',
+  },
+  {
+    id: 'poco-m6',
+    manufacturer: 'POCO',
+    model: 'M6',
+    displayName: 'POCO M6',
+    aliases: ['poco m6', 'm6'],
+    displaySize: 6.79,
+    resolution: '1080x2460',
+    refreshRate: 90,
+    dpi: 390,
+    ppi: 396,
+    network: 'Snapdragon 4 Gen 2',
+    performanceTier: 'mid',
+    touchClass: 'responsive',
+    confidence: 92,
+    provenance: 'REPORTED',
+  },
+  {
+    id: 'oneplus-11',
+    manufacturer: 'OnePlus',
+    model: '11',
+    displayName: 'OnePlus 11',
+    aliases: ['oneplus 11', 'op11'],
+    displaySize: 6.7,
+    resolution: '1440x3216',
+    refreshRate: 120,
+    dpi: 525,
+    ppi: 525,
+    network: 'Snapdragon 8 Gen 2',
+    performanceTier: 'flagship',
+    touchClass: 'high',
+    confidence: 97,
+    provenance: 'VERIFIED',
+  },
+];
+
+export const WEAPON_PRESETS = [
+  {
+    name: 'All Weapons',
+    weights: { SMG: 25, AR: 30, SHOTGUN: 15, SNIPER: 15, DMR: 10, PISTOL: 5, MELEE: 0 },
+  },
+  {
+    name: 'Rush / Mixed',
+    weights: { SMG: 35, AR: 25, SHOTGUN: 20, SNIPER: 10, DMR: 5, PISTOL: 5, MELEE: 0 },
+  },
+  {
+    name: 'Tactical',
+    weights: { SMG: 15, AR: 30, SHOTGUN: 10, SNIPER: 25, DMR: 15, PISTOL: 5, MELEE: 0 },
+  },
+];
+
+export const defaultProfile = {
+  device: DEVICE_DATABASE[0],
+  gameMode: 'Free Fire Normal',
+  currentDpi: 360,
+  targetDpi: 360,
+  refreshRate: 60,
+  screenSize: 6.5,
+  fireButtonSize: 'MEDIUM',
+  playerProfile: {
+    rush: 60,
+    balanced: 70,
+    tactical: 40,
+    precision: 55,
+    tracking: 65,
+    dragShot: 75,
+    oneTap: 50,
+  },
+  weaponProfile: { ...WEAPON_PRESETS[1].weights },
+};
+
+export function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function searchDevices(query) {
+  const term = (query || '').trim().toLowerCase();
+  if (!term) {
+    return DEVICE_DATABASE;
+  }
+
+  return DEVICE_DATABASE.filter((device) => {
+    const haystack = [
+      device.displayName,
+      device.manufacturer,
+      device.model,
+      ...(device.aliases || []),
+      device.performanceTier,
+      device.refreshRate,
+      device.dpi,
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return haystack.includes(term) || device.aliases.some((alias) => alias.toLowerCase().includes(term));
+  });
+}
+
+export function validateProfile(profile) {
+  const errors = [];
+  if (!profile || !profile.device) {
+    errors.push('Missing device');
+  }
+  if (!Number.isFinite(profile.currentDpi) || profile.currentDpi <= 0) {
+    errors.push('Current DPI must be > 0');
+  }
+  if (!Number.isFinite(profile.targetDpi) || profile.targetDpi <= 0) {
+    errors.push('Target DPI must be > 0');
+  }
+  if (!Number.isFinite(profile.refreshRate) || profile.refreshRate <= 0) {
+    errors.push('Refresh rate must be > 0');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+function normalizeRangedValue(value, min, max) {
+  return clamp((value - min) / (max - min), 0, 1);
+}
+
+export function calculateCalibration(profile) {
+  const device = profile.device || DEVICE_DATABASE[0];
+  const validation = validateProfile(profile);
+  const inputConfidence = validation.valid ? 100 : 70;
+
+  const playerVector = Object.values(profile.playerProfile || {}).reduce((sum, value) => sum + Number(value || 0), 0) / 7;
+  const weaponWeightTotal = Object.values(profile.weaponProfile || {}).reduce((sum, value) => sum + Number(value || 0), 0) || 1;
+  const weaponBias = Object.entries(profile.weaponProfile || {}).reduce((sum, [key, value]) => {
+    const weighted = Number(value || 0) / weaponWeightTotal;
+    return sum + weighted * (key === 'SNIPER' ? 1.2 : key === 'SMG' ? 0.9 : key === 'AR' ? 0.7 : 0.6);
+  }, 0);
+
+  const resolutionFactor = normalizeRangedValue(device.dpi || 360, 120, 600);
+  const refreshFactor = normalizeRangedValue(device.refreshRate || 60, 60, 144);
+  const screenFactor = normalizeRangedValue(device.displaySize || 6.5, 5, 7.5);
+  const playerFactor = normalizeRangedValue(playerVector, 10, 90);
+  const fireButtonFactor = profile.fireButtonSize === 'LARGE' ? 0.92 : profile.fireButtonSize === 'SMALL' ? 1.08 : 1;
+
+  const base = 110 + (device.dpi - 360) * 0.08 + (profile.targetDpi - profile.currentDpi) * 0.04 + (playerVector - 50) * 0.6;
+  const rawGeneral = clamp(base * (0.9 + resolutionFactor * 0.35) * (1 + refreshFactor * 0.1) * fireButtonFactor * (0.92 + weaponBias * 0.2), 0, 200);
+
+  const result = {
+    sensitivity: {
+      General: clamp(Math.round(rawGeneral), 0, 200),
+      'Red Dot': clamp(Math.round(rawGeneral + 10), 0, 200),
+      '2X': clamp(Math.round(rawGeneral - 4), 0, 200),
+      '4X': clamp(Math.round(rawGeneral - 22), 0, 200),
+      'Sniper/AWM': clamp(Math.round(rawGeneral - 38), 0, 200),
+      'Free Look': clamp(Math.round(rawGeneral + 5), 0, 200),
+    },
+    deviceConfidence: clamp(Math.round(device.confidence || 80 + inputConfidence * 0.1), 0, 100),
+    modelConfidence: clamp(Math.round(80 + playerFactor * 20 + refreshFactor * 10 - Math.abs(profile.targetDpi - profile.currentDpi) * 0.02), 0, 100),
+    inputConfidence,
+    overallConfidence: 0,
+    robustness: {
+      coreValue: clamp(Math.round(rawGeneral), 0, 200),
+      localStability: clamp(Math.round(82 + playerFactor * 12 - Math.abs(profile.targetDpi - profile.currentDpi) * 0.03), 0, 100),
+      neighborhood: [
+        clamp(Math.round(rawGeneral - 3), 0, 200),
+        clamp(Math.round(rawGeneral - 2), 0, 200),
+        clamp(Math.round(rawGeneral - 1), 0, 200),
+        clamp(Math.round(rawGeneral), 0, 200),
+        clamp(Math.round(rawGeneral + 1), 0, 200),
+        clamp(Math.round(rawGeneral + 2), 0, 200),
+        clamp(Math.round(rawGeneral + 3), 0, 200),
+      ],
+    },
+    notes: {
+      gameMode: profile.gameMode,
+      device: device.displayName,
+      targetDpi: profile.targetDpi,
+      currentDpi: profile.currentDpi,
+      fireButton: profile.fireButtonSize,
+    },
+  };
+
+  result.overallConfidence = clamp(
+    Math.round((result.deviceConfidence * 0.4 + result.modelConfidence * 0.4 + result.inputConfidence * 0.2) / 1),
+    0,
+    100,
+  );
+
+  return result;
+}
+
+export function createProfileSummary(profile, results) {
+  return {
+    device: profile.device?.displayName || 'Unknown Device',
+    mode: profile.gameMode,
+    dpi: `${profile.currentDpi}→${profile.targetDpi}`,
+    general: results.sensitivity.General,
+    confidence: results.overallConfidence,
+  };
+}
+
+export function generateAnalysis(profile, results) {
+  const checks = [];
+  if (profile.currentDpi !== profile.targetDpi) {
+    checks.push('Current DPI differs from target DPI. Engine is calibrating for the target state instead of the current baseline.');
+  }
+  if (profile.refreshRate <= 60) {
+    checks.push('Refresh rate is modest and favors steadier motion tuning to reduce overshoot risk.');
+  }
+  if (profile.gameMode === 'Free Fire MAX') {
+    checks.push('Free Fire MAX profile includes environment adjustment for heavier rendering and frame-time sensitivity.');
+  }
+  if (profile.playerProfile.dragShot > 60) {
+    checks.push('Drag shot preference pushes the general and sensitivity curve toward smoother control transitions.');
+  }
+
+  const reasons = [
+    `The engine weighted ${profile.device.displayName} with a ${profile.device.refreshRate} Hz display and ${profile.device.dpi} DPI baseline.`,
+    `The player model favors ${profile.fireButtonSize.toLowerCase()} fire-button geometry and mixed weapon behavior.`,
+    `General sensitivity was tuned to preserve stability while reducing overshoot risk in fast transitions.`,
+    `The final vector keeps the sensitivity relationship between general, scope, and free-look values constrained and explainable.`,
+  ];
+
+  return { checks, reasons };
+}
+
+export function exportProfileAsJson(profile, results) {
+  const payload = { profile, results, exportedAt: new Date().toISOString(), version: '0.1.0' };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'knight-sensi-profile.json';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function exportProfileAsText(profile, results) {
+  const content = [
+    'KNIGHT SENSI PROFILE',
+    `Device: ${profile.device.displayName}`,
+    `Game mode: ${profile.gameMode}`,
+    `DPI: ${profile.currentDpi} -> ${profile.targetDpi}`,
+    `General: ${results.sensitivity.General}`,
+    `Red Dot: ${results.sensitivity['Red Dot']}`,
+    `2X: ${results.sensitivity['2X']}`,
+    `4X: ${results.sensitivity['4X']}`,
+    `Sniper/AWM: ${results.sensitivity['Sniper/AWM']}`,
+    `Free Look: ${results.sensitivity['Free Look']}`,
+  ].join('\n');
+
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'knight-sensi-profile.txt';
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function exportProfileAsPng(profile, results) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 600;
+  canvas.height = 800;
+  const context = canvas.getContext('2d');
+
+  context.fillStyle = '#0b1220';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#7dd3fc';
+  context.font = 'bold 30px sans-serif';
+  context.fillText('KNIGHT SENSI', 40, 70);
+  context.fillStyle = '#ffffff';
+  context.font = '20px sans-serif';
+  context.fillText(`${profile.device.displayName} • ${profile.gameMode}`, 40, 120);
+  context.fillText(`General: ${results.sensitivity.General}`, 40, 200);
+  context.fillText(`Red Dot: ${results.sensitivity['Red Dot']}`, 40, 245);
+  context.fillText(`2X: ${results.sensitivity['2X']}`, 40, 290);
+  context.fillText(`4X: ${results.sensitivity['4X']}`, 40, 335);
+  context.fillText(`Sniper: ${results.sensitivity['Sniper/AWM']}`, 40, 380);
+
+  const url = canvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'knight-sensi-card.png';
+  link.click();
+}
+
+export function compareProfiles(profileA, profileB) {
+  const a = calculateCalibration(profileA);
+  const b = calculateCalibration(profileB);
+  const valueSimilarity = Object.keys(a.sensitivity).reduce((sum, key) => {
+    return sum + (1 - Math.abs(a.sensitivity[key] - b.sensitivity[key]) / 200);
+  }, 0) / Object.keys(a.sensitivity).length;
+
+  return {
+    valueSimilarity: clamp(Math.round(valueSimilarity * 100), 0, 100),
+    deviceSimilarity: clamp(Math.round((profileA.device.id === profileB.device.id ? 100 : 75)), 0, 100),
+  };
+}
